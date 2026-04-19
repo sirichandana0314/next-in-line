@@ -124,6 +124,26 @@ COMMIT;
 4. Transaction B unblocks, counts 10 active, inserts as waitlisted
 5. Capacity is never exceeded — guaranteed
 
+### Concurrency Test — Proven, Not Just Claimed
+
+Run this to prove it works:
+
+\```bash
+cd server
+node src/tests/concurrencyTest.js
+\```
+
+Expected output:
+\```
+✅ PASSED — Exactly 1 applicant got the active spot
+✅ PASSED — Capacity was NEVER exceeded
+✅ PASSED — SELECT FOR UPDATE locking works correctly
+✅ PASSED — Race condition is fully prevented
+\```
+
+5 applications fired simultaneously at a job with capacity 1.
+Only 1 gets the spot. Every time. Guaranteed.
+
 ### 3. Inactivity Decay System
 
 When a waitlisted applicant is promoted, a countdown begins.

@@ -1,0 +1,13 @@
+{
+    "name": "next-in-line",
+    "version": "1.0.0",
+    "description": "A lightweight hiring pipeline that moves itself",
+    "scripts": {
+        "install:all": "cd server && npm install && cd ../client && npm install",
+        "dev:server": "cd server && npm run dev",
+        "dev:client": "cd client && npm start",
+        "db:setup": "psql -U postgres -d next_in_line -f server/src/db/schema.sql",
+        "db:seed": "psql -U postgres -d next_in_line -f server/src/db/seed.sql",
+        "db:reset": "npm run db:setup && npm run db:seed"
+    }
+}

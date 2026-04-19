@@ -10,6 +10,7 @@ function CompanyDashboard() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [autoRefresh, setAutoRefresh] = useState(true);
+    const [copied, setCopied] = useState(false);
     const [newCompanyName, setNewCompanyName] = useState('');
     const [newJob, setNewJob] = useState({
         title: '',
@@ -113,6 +114,12 @@ function CompanyDashboard() {
         }
     };
 
+    const handleCopyJobId = (jobId) => {
+        navigator.clipboard.writeText(jobId);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     const s = {
         card: {
             border: '1px solid #e5e7eb',
@@ -211,25 +218,41 @@ function CompanyDashboard() {
                         />
                         <button type="submit" style={s.btnBlue}>Add</button>
                     </form>
-                    {companies.map((c) => (
-                        <div
-                            key={c.id}
-                            onClick={() => handleSelectCompany(c.id)}
-                            style={{
-                                padding: '10px',
-                                cursor: 'pointer',
-                                borderRadius: '4px',
-                                backgroundColor:
-                                    selectedCompany === c.id ? '#eff6ff' : 'transparent',
-                                borderLeft:
-                                    selectedCompany === c.id
-                                        ? '3px solid #3b82f6'
-                                        : '3px solid transparent',
-                            }}
-                        >
-                            {c.name}
+
+                    {companies.length === 0 ? (
+                        <div style={{
+                            padding: '20px',
+                            textAlign: 'center',
+                            color: '#9ca3af',
+                            border: '2px dashed #e5e7eb',
+                            borderRadius: '8px',
+                        }}>
+                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏢</div>
+                            <div>No companies yet</div>
+                            <div style={{ fontSize: '12px' }}>Add your first company above</div>
                         </div>
-                    ))}
+                    ) : (
+                        companies.map((c) => (
+                            <div
+                                key={c.id}
+                                onClick={() => handleSelectCompany(c.id)}
+                                style={{
+                                    padding: '10px',
+                                    cursor: 'pointer',
+                                    borderRadius: '4px',
+                                    marginBottom: '4px',
+                                    backgroundColor:
+                                        selectedCompany === c.id ? '#eff6ff' : 'transparent',
+                                    borderLeft:
+                                        selectedCompany === c.id
+                                            ? '3px solid #3b82f6'
+                                            : '3px solid transparent',
+                                }}
+                            >
+                                {c.name}
+                            </div>
+                        ))
+                    )}
                 </div>
 
                 {/* Jobs */}
@@ -301,30 +324,47 @@ function CompanyDashboard() {
                                 Create Job
                             </button>
                         </form>
-                        {jobs.map((j) => (
-                            <div
-                                key={j.id}
-                                onClick={() => handleSelectJob(j.id)}
-                                style={{
-                                    padding: '10px',
-                                    cursor: 'pointer',
-                                    borderRadius: '4px',
-                                    marginBottom: '4px',
-                                    backgroundColor:
-                                        selectedJob === j.id ? '#f0fdf4' : 'transparent',
-                                    borderLeft:
-                                        selectedJob === j.id
-                                            ? '3px solid #22c55e'
-                                            : '3px solid transparent',
-                                }}
-                            >
-                                <strong>{j.title}</strong>
-                                <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                                    Capacity: {j.active_capacity} | 
-                                    Apps: {j.total_applications || 0}
-                                </div>
+
+                        {jobs.length === 0 ? (
+                            <div style={{
+                                padding: '20px',
+                                textAlign: 'center',
+                                color: '#9ca3af',
+                                border: '2px dashed #e5e7eb',
+                                borderRadius: '8px',
+                            }}>
+                                <div style={{ fontSize: '32px', marginBottom: '8px' }}>💼</div>
+                                <div>No job openings yet</div>
+                                <div style={{ fontSize: '12px' }}>Create your first job above</div>
                             </div>
-                        ))}
+                        ) : (
+                            jobs.map((j) => (
+                                <div
+                                    key={j.id}
+                                    onClick={() => handleSelectJob(j.id)}
+                                    style={{
+                                        padding: '10px',
+                                        cursor: 'pointer',
+                                        borderRadius: '4px',
+                                        marginBottom: '4px',
+                                        backgroundColor:
+                                            selectedJob === j.id ? '#f0fdf4' : 'transparent',
+                                        borderLeft:
+                                            selectedJob === j.id
+                                                ? '3px solid #22c55e'
+                                                : '3px solid transparent',
+                                    }}
+                                >
+                                    <strong>{j.title}</strong>
+                                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                                        Capacity: {j.active_capacity} |
+                                        Active: {j.active_count} |
+                                        Waitlisted: {j.waitlisted_count} |
+                                        Total: {j.total_applications || 0}
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 )}
             </div>
@@ -338,9 +378,43 @@ function CompanyDashboard() {
                         alignItems: 'center',
                         marginBottom: '16px',
                     }}>
-                        <h2 style={{ margin: 0 }}>
-                            {pipeline.job.title} — Pipeline
-                        </h2>
+                        <div>
+                            <h2 style={{ margin: 0 }}>
+                                {pipeline.job.title} — Pipeline
+                            </h2>
+                            <div style={{
+                                fontSize: '12px',
+                                color: '#6b7280',
+                                marginTop: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                            }}>
+                                <span>
+                                    Job ID: {pipeline.job.id}
+                                </span>
+                                <button
+                                    onClick={() => handleCopyJobId(pipeline.job.id)}
+                                    style={{
+                                        padding: '2px 8px',
+                                        fontSize: '11px',
+                                        background: copied ? '#dcfce7' : '#f3f4f6',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        color: copied ? '#16a34a' : '#374151',
+                                    }}
+                                >
+                                    {copied ? '✅ Copied!' : '📋 Copy ID'}
+                                </button>
+                                <span style={{
+                                    fontSize: '11px',
+                                    color: '#9ca3af',
+                                }}>
+                                    (Use this ID in Applicant Portal to apply)
+                                </span>
+                            </div>
+                        </div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <label style={{ fontSize: '14px' }}>
                                 <input
@@ -352,7 +426,11 @@ function CompanyDashboard() {
                             </label>
                             <button
                                 onClick={() => loadPipeline(selectedJob)}
-                                style={{ ...s.btnBlue, background: '#6b7280', padding: '6px 12px' }}
+                                style={{
+                                    ...s.btnBlue,
+                                    background: '#6b7280',
+                                    padding: '6px 12px',
+                                }}
                             >
                                 🔄 Refresh
                             </button>
@@ -397,7 +475,16 @@ function CompanyDashboard() {
                     {/* Active */}
                     <h3>🟢 Active ({pipeline.pipeline.active.length}/{pipeline.job.activeCapacity})</h3>
                     {pipeline.pipeline.active.length === 0 ? (
-                        <p style={{ color: '#9ca3af' }}>No active applications</p>
+                        <div style={{
+                            padding: '16px',
+                            textAlign: 'center',
+                            color: '#9ca3af',
+                            border: '2px dashed #e5e7eb',
+                            borderRadius: '8px',
+                            marginBottom: '20px',
+                        }}>
+                            No active applications yet
+                        </div>
                     ) : (
                         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
                             <thead>
@@ -442,6 +529,17 @@ function CompanyDashboard() {
                     {pipeline.pipeline.pendingAcknowledgment.length > 0 && (
                         <>
                             <h3>🟡 Pending Acknowledgment ({pipeline.pipeline.pendingAcknowledgment.length})</h3>
+                            <div style={{
+                                background: '#fffbeb',
+                                border: '1px solid #f59e0b',
+                                borderRadius: '8px',
+                                padding: '8px 12px',
+                                marginBottom: '8px',
+                                fontSize: '13px',
+                                color: '#92400e',
+                            }}>
+                                ⏰ These applicants have been promoted and must acknowledge before their deadline or they decay back to the waitlist.
+                            </div>
                             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
                                 <thead>
                                     <tr style={{ background: '#fffbeb' }}>
@@ -463,7 +561,11 @@ function CompanyDashboard() {
                                                     ? new Date(a.deadline).toLocaleString()
                                                     : 'N/A'}
                                             </td>
-                                            <td style={s.td}>{a.decay_count}</td>
+                                            <td style={s.td}>
+                                                {a.decay_count > 0
+                                                    ? `⚠️ ${a.decay_count}`
+                                                    : a.decay_count}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -474,7 +576,16 @@ function CompanyDashboard() {
                     {/* Waitlisted */}
                     <h3>🔵 Waitlisted ({pipeline.pipeline.waitlisted.length})</h3>
                     {pipeline.pipeline.waitlisted.length === 0 ? (
-                        <p style={{ color: '#9ca3af' }}>No waitlisted applications</p>
+                        <div style={{
+                            padding: '16px',
+                            textAlign: 'center',
+                            color: '#9ca3af',
+                            border: '2px dashed #e5e7eb',
+                            borderRadius: '8px',
+                            marginBottom: '20px',
+                        }}>
+                            No waitlisted applications
+                        </div>
                     ) : (
                         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
                             <thead>

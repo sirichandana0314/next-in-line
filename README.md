@@ -62,22 +62,23 @@ npm start
 ---
 
 ## 🏗️ Architecture
-┌────────────────────┐     ┌────────────────────┐
-│   React Frontend   │────▶│   Express API      │
-│                    │◀────│                    │
-│ • Company Dashboard│     │ • REST Endpoints   │
-│ • Applicant Portal │     │ • Pipeline Service │
-│                    │     │ • Decay Scheduler  │
-└────────────────────┘     └────────┬───────────┘
-                                    │
-                           ┌────────▼───────────┐
-                           │   PostgreSQL        │
-                           │                    │
-                           │ • companies        │
-                           │ • job_openings     │
-                           │ • applications     │
-                           │ • status_log       │
-                           └────────────────────┘
+
+The system has 3 layers:
+
+**Layer 1 — Frontend (React)**
+- Company Dashboard: create jobs, view pipeline, hire or reject applicants
+- Applicant Portal: check status, view queue position, acknowledge promotion
+
+**Layer 2 — Backend (Express + Node.js)**
+- REST API handles all requests
+- PipelineService contains all core business logic
+- DecayScheduler runs every 60 seconds checking for expired promotions
+
+**Layer 3 — Database (PostgreSQL)**
+- companies table
+- job_openings table
+- applications table
+- application_status_log table (append-only audit trail)
 
 ### Tech Stack
 - **PostgreSQL** — Relational database with ACID transactions
@@ -333,22 +334,38 @@ Error 400: Cannot acknowledge from status active. Must be pending_acknowledgment
 ---
 
 ## 🔄 Application State Machine
-APPLIED ──┬──▶ ACTIVE ──────────────▶ HIRED
-          │         │                  REJECTED
-          │         └────────────────▶ WITHDRAWN
-          │
-          └──▶ WAITLISTED ◀───────────────────┐
-                    │                          │
-                    ▼                          │
-          PENDING_ACKNOWLEDGMENT               │
-                    │                          │
-              ┌─────┴──────┐                  │
-              ▼            ▼                  │
-           ACTIVE      WAITLISTED ────────────┘
-                      (with penalty)
-                      
-          After max decays:
-          PENDING_ACKNOWLEDGMENT ──▶ REJECTED
+
+Every application moves through these statuses:
+
+**On Apply:**
+- If active spots available → status becomes ACTIVE
+- If no spots available → status becomes WAITLISTED
+
+**When active spot opens:**
+- Next WAITLISTED person → status becomes PENDING_ACKNOWLEDGMENT
+- Acknowledgment timer starts immediately
+
+**If applicant acknowledges in time:**
+- PENDING_ACKNOWLEDGMENT → ACTIVE
+
+**If applicant does NOT acknowledge in time:**
+- decay_count is less than max_decays → back to WAITLISTED with penalty position
+- decay_count equals max_decays → permanently REJECTED
+- Next waitlisted person promotes automatically (cascade)
+
+**Company actions on active applicants:**
+- ACTIVE → HIRED
+- ACTIVE → REJECTED
+- ACTIVE → WITHDRAWN
+
+**Valid status values:**
+- applied
+- active
+- waitlisted
+- pending_acknowledgment
+- hired
+- rejected
+- withdrawn
 
 ---
 
@@ -397,37 +414,34 @@ The company dashboard has:
 ---
 
 ## 📁 Project Structure
-next-in-line/
-├── server/
-│   ├── src/
-│   │   ├── controllers/
-│   │   │   ├── applicationController.js
-│   │   │   ├── companyController.js
-│   │   │   └── jobController.js
-│   │   ├── db/
-│   │   │   ├── pool.js
-│   │   │   └── schema.sql
-│   │   ├── routes/
-│   │   │   ├── applicationRoutes.js
-│   │   │   ├── companyRoutes.js
-│   │   │   └── jobRoutes.js
-│   │   ├── services/
-│   │   │   ├── decayScheduler.js
-│   │   │   └── pipelineService.js
-│   │   └── index.js
-│   ├── .env.example
-│   └── package.json
-├── client/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── ApplicantView.js
-│   │   │   └── CompanyDashboard.js
-│   │   ├── services/
-│   │   │   └── api.js
-│   │   ├── App.js
-│   │   └── index.js
-│   └── package.json
-└── README.md
+
+**server/**
+- src/controllers/applicationController.js
+- src/controllers/companyController.js
+- src/controllers/jobController.js
+- src/db/pool.js
+- src/db/schema.sql
+- src/routes/applicationRoutes.js
+- src/routes/companyRoutes.js
+- src/routes/jobRoutes.js
+- src/services/decayScheduler.js
+- src/services/pipelineService.js
+- src/index.js
+- .env.example
+- package.json
+
+**client/**
+- src/components/ApplicantView.js
+- src/components/CompanyDashboard.js
+- src/services/api.js
+- src/App.js
+- src/index.js
+- package.json
+
+**root**
+- README.md
+- LICENSE
+- .gitignore
 
 ---
 

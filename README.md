@@ -421,7 +421,16 @@ The company dashboard has:
 ## 🔮 What I Would Change With More Time
 
 1. **Email Notifications** — When promoted, applicants get an email with acknowledgment link
-2. **Authentication** — Companies need login credentials, applicants need email verification
+2. **Authentication & Privacy** — Currently the system operates as a 
+trusted internal tool with no authentication layer, which is appropriate 
+for the stated use case of small engineering teams. In production:
+   - Company dashboard would be behind JWT authentication
+   - Each company would only see their own pipeline
+   - Applicant portal would use email verification tokens
+   - Action log would be company-private only
+   - The applicant view already has privacy by design — 
+     applicants can only look up their own applications by email
+     and cannot see other applicants or pipeline details
 3. **WebSocket Layer** — Real-time pipeline updates for company dashboard
 4. **Database Migrations** — Use node-pg-migrate instead of raw SQL files
 5. **Comprehensive Tests** — Unit tests for PipelineService, integration tests for API

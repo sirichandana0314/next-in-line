@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ToastContainer, { useToast } from './Toast';
+import ActionLog from './ActionLog';
+import PipelineBoard from './PipelineBoard';
 import { companyAPI, jobAPI, applicationAPI } from '../services/api';
 
 function CompanyDashboard() {
+    const { toasts, toast, removeToast } = useToast();
     const [companies, setCompanies] = useState([]);
     const [selectedCompany, setSelectedCompany] = useState(null);
     const [jobs, setJobs] = useState([]);
@@ -76,8 +80,10 @@ function CompanyDashboard() {
             await companyAPI.create({ name: newCompanyName });
             setNewCompanyName('');
             loadCompanies();
+            toast.success('Company created successfully!', 'Done');
         } catch (err) {
             setError('Failed to create company');
+            toast.error('Failed to create company', 'Error');
         }
     };
 
@@ -97,18 +103,41 @@ function CompanyDashboard() {
                 decayWindowMinutes: 1440,
             });
             loadJobs(selectedCompany);
+            toast.success('Job opening created!', 'Done');
         } catch (err) {
             setError('Failed to create job');
+            toast.error('Failed to create job', 'Error');
         }
     };
 
-    const handleExit = async (appId, reason) => {
+    const handleExit = async (appId, reason, applicantName) => {
         try {
             setLoading(true);
             await applicationAPI.exit(appId, reason);
             loadPipeline(selectedJob);
+
+            if (reason === 'hired') {
+                toast.hired(
+                    `${applicantName} has been hired! 🎉`,
+                    'Candidate Hired'
+                );
+            } else if (reason === 'rejected') {
+                toast.rejected(
+                    `${applicantName} has been rejected.`,
+                    'Application Rejected'
+                );
+            } else if (reason === 'withdrawn') {
+                toast.warning(
+                    `${applicantName} has withdrawn.`,
+                    'Application Withdrawn'
+                );
+            }
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to update');
+            toast.error(
+                err.response?.data?.error || 'Failed to update',
+                'Error'
+            );
         } finally {
             setLoading(false);
         }
@@ -117,6 +146,7 @@ function CompanyDashboard() {
     const handleCopyJobId = (jobId) => {
         navigator.clipboard.writeText(jobId);
         setCopied(true);
+        toast.info('Job ID copied to clipboard!', 'Copied');
         setTimeout(() => setCopied(false), 2000);
     };
 
@@ -141,34 +171,6 @@ function CompanyDashboard() {
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
-        },
-        btnGreen: {
-            padding: '4px 8px',
-            background: '#8b5cf6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            marginRight: '4px',
-        },
-        btnRed: {
-            padding: '4px 8px',
-            background: '#ef4444',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-        },
-        th: {
-            padding: '8px',
-            textAlign: 'left',
-            borderBottom: '1px solid #e5e7eb',
-        },
-        td: {
-            padding: '8px',
-            borderBottom: '1px solid #f3f4f6',
         },
     };
 
@@ -229,7 +231,9 @@ function CompanyDashboard() {
                         }}>
                             <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏢</div>
                             <div>No companies yet</div>
-                            <div style={{ fontSize: '12px' }}>Add your first company above</div>
+                            <div style={{ fontSize: '12px' }}>
+                                Add your first company above
+                            </div>
                         </div>
                     ) : (
                         companies.map((c) => (
@@ -242,7 +246,8 @@ function CompanyDashboard() {
                                     borderRadius: '4px',
                                     marginBottom: '4px',
                                     backgroundColor:
-                                        selectedCompany === c.id ? '#eff6ff' : 'transparent',
+                                        selectedCompany === c.id
+                                            ? '#eff6ff' : 'transparent',
                                     borderLeft:
                                         selectedCompany === c.id
                                             ? '3px solid #3b82f6'
@@ -259,7 +264,10 @@ function CompanyDashboard() {
                 {selectedCompany && (
                     <div style={{ ...s.card, flex: 1 }}>
                         <h3>Job Openings</h3>
-                        <form onSubmit={handleCreateJob} style={{ marginBottom: '12px' }}>
+                        <form
+                            onSubmit={handleCreateJob}
+                            style={{ marginBottom: '12px' }}
+                        >
                             <input
                                 type="text"
                                 placeholder="Job title"
@@ -281,7 +289,9 @@ function CompanyDashboard() {
                             />
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{ fontSize: '12px', color: '#6b7280' }}>
+                                    <label style={{
+                                        fontSize: '12px', color: '#6b7280',
+                                    }}>
                                         Active Capacity
                                     </label>
                                     <input
@@ -299,7 +309,9 @@ function CompanyDashboard() {
                                     />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{ fontSize: '12px', color: '#6b7280' }}>
+                                    <label style={{
+                                        fontSize: '12px', color: '#6b7280',
+                                    }}>
                                         Decay Window (min)
                                     </label>
                                     <input
@@ -333,9 +345,13 @@ function CompanyDashboard() {
                                 border: '2px dashed #e5e7eb',
                                 borderRadius: '8px',
                             }}>
-                                <div style={{ fontSize: '32px', marginBottom: '8px' }}>💼</div>
+                                <div style={{ fontSize: '32px', marginBottom: '8px' }}>
+                                    💼
+                                </div>
                                 <div>No job openings yet</div>
-                                <div style={{ fontSize: '12px' }}>Create your first job above</div>
+                                <div style={{ fontSize: '12px' }}>
+                                    Create your first job above
+                                </div>
                             </div>
                         ) : (
                             jobs.map((j) => (
@@ -348,7 +364,8 @@ function CompanyDashboard() {
                                         borderRadius: '4px',
                                         marginBottom: '4px',
                                         backgroundColor:
-                                            selectedJob === j.id ? '#f0fdf4' : 'transparent',
+                                            selectedJob === j.id
+                                                ? '#f0fdf4' : 'transparent',
                                         borderLeft:
                                             selectedJob === j.id
                                                 ? '3px solid #22c55e'
@@ -356,7 +373,9 @@ function CompanyDashboard() {
                                     }}
                                 >
                                     <strong>{j.title}</strong>
-                                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                                    <div style={{
+                                        fontSize: '12px', color: '#6b7280',
+                                    }}>
                                         Capacity: {j.active_capacity} |
                                         Active: {j.active_count} |
                                         Waitlisted: {j.waitlisted_count} |
@@ -372,11 +391,13 @@ function CompanyDashboard() {
             {/* Pipeline */}
             {pipeline && (
                 <div style={s.card}>
+
+                    {/* Pipeline Header */}
                     <div style={{
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        marginBottom: '16px',
+                        marginBottom: '20px',
                     }}>
                         <div>
                             <h2 style={{ margin: 0 }}>
@@ -390,9 +411,7 @@ function CompanyDashboard() {
                                 alignItems: 'center',
                                 gap: '8px',
                             }}>
-                                <span>
-                                    Job ID: {pipeline.job.id}
-                                </span>
+                                <span>Job ID: {pipeline.job.id}</span>
                                 <button
                                     onClick={() => handleCopyJobId(pipeline.job.id)}
                                     style={{
@@ -408,14 +427,15 @@ function CompanyDashboard() {
                                     {copied ? '✅ Copied!' : '📋 Copy ID'}
                                 </button>
                                 <span style={{
-                                    fontSize: '11px',
-                                    color: '#9ca3af',
+                                    fontSize: '11px', color: '#9ca3af',
                                 }}>
-                                    (Use this ID in Applicant Portal to apply)
+                                    (Share with applicants)
                                 </span>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <div style={{
+                            display: 'flex', gap: '8px', alignItems: 'center',
+                        }}>
                             <label style={{ fontSize: '14px' }}>
                                 <input
                                     type="checkbox"
@@ -437,19 +457,39 @@ function CompanyDashboard() {
                         </div>
                     </div>
 
-                    {/* Stats */}
+                    {/* Stats Row */}
                     <div style={{
                         display: 'flex',
-                        gap: '16px',
-                        marginBottom: '20px',
+                        gap: '12px',
+                        marginBottom: '24px',
                         flexWrap: 'wrap',
                     }}>
                         {[
-                            { label: 'Active', value: pipeline.stats.activeCount, color: '#22c55e' },
-                            { label: 'Pending Ack', value: pipeline.stats.pendingCount, color: '#f59e0b' },
-                            { label: 'Waitlisted', value: pipeline.stats.waitlistedCount, color: '#3b82f6' },
-                            { label: 'Spots Open', value: pipeline.stats.spotsAvailable, color: '#8b5cf6' },
-                            { label: 'Total', value: pipeline.stats.totalApplications, color: '#6b7280' },
+                            {
+                                label: 'Active',
+                                value: pipeline.stats.activeCount,
+                                color: '#22c55e',
+                            },
+                            {
+                                label: 'Pending Ack',
+                                value: pipeline.stats.pendingCount,
+                                color: '#f59e0b',
+                            },
+                            {
+                                label: 'Waitlisted',
+                                value: pipeline.stats.waitlistedCount,
+                                color: '#3b82f6',
+                            },
+                            {
+                                label: 'Spots Open',
+                                value: pipeline.stats.spotsAvailable,
+                                color: '#8b5cf6',
+                            },
+                            {
+                                label: 'Total Apps',
+                                value: pipeline.stats.totalApplications,
+                                color: '#6b7280',
+                            },
                         ].map((stat) => (
                             <div key={stat.label} style={{
                                 padding: '12px 20px',
@@ -465,197 +505,30 @@ function CompanyDashboard() {
                                 }}>
                                     {stat.value}
                                 </div>
-                                <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                                <div style={{
+                                    fontSize: '12px', color: '#6b7280',
+                                }}>
                                     {stat.label}
                                 </div>
                             </div>
                         ))}
                     </div>
 
-                    {/* Active */}
-                    <h3>🟢 Active ({pipeline.pipeline.active.length}/{pipeline.job.activeCapacity})</h3>
-                    {pipeline.pipeline.active.length === 0 ? (
-                        <div style={{
-                            padding: '16px',
-                            textAlign: 'center',
-                            color: '#9ca3af',
-                            border: '2px dashed #e5e7eb',
-                            borderRadius: '8px',
-                            marginBottom: '20px',
-                        }}>
-                            No active applications yet
-                        </div>
-                    ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-                            <thead>
-                                <tr style={{ background: '#f9fafb' }}>
-                                    <th style={s.th}>Name</th>
-                                    <th style={s.th}>Email</th>
-                                    <th style={s.th}>Applied</th>
-                                    <th style={s.th}>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pipeline.pipeline.active.map((a) => (
-                                    <tr key={a.id}>
-                                        <td style={s.td}>{a.applicant_name}</td>
-                                        <td style={s.td}>{a.applicant_email}</td>
-                                        <td style={s.td}>
-                                            {new Date(a.applied_at).toLocaleDateString()}
-                                        </td>
-                                        <td style={s.td}>
-                                            <button
-                                                disabled={loading}
-                                                onClick={() => handleExit(a.id, 'hired')}
-                                                style={s.btnGreen}
-                                            >
-                                                Hire
-                                            </button>
-                                            <button
-                                                disabled={loading}
-                                                onClick={() => handleExit(a.id, 'rejected')}
-                                                style={s.btnRed}
-                                            >
-                                                Reject
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
+                    {/* Pipeline Board — Visual Cards */}
+                    <PipelineBoard
+                        pipeline={pipeline}
+                        onHire={(id, name) => handleExit(id, 'hired', name)}
+                        onReject={(id, name) => handleExit(id, 'rejected', name)}
+                        loading={loading}
+                    />
 
-                    {/* Pending Acknowledgment */}
-                    {pipeline.pipeline.pendingAcknowledgment.length > 0 && (
-                        <>
-                            <h3>🟡 Pending Acknowledgment ({pipeline.pipeline.pendingAcknowledgment.length})</h3>
-                            <div style={{
-                                background: '#fffbeb',
-                                border: '1px solid #f59e0b',
-                                borderRadius: '8px',
-                                padding: '8px 12px',
-                                marginBottom: '8px',
-                                fontSize: '13px',
-                                color: '#92400e',
-                            }}>
-                                ⏰ These applicants have been promoted and must acknowledge before their deadline or they decay back to the waitlist.
-                            </div>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-                                <thead>
-                                    <tr style={{ background: '#fffbeb' }}>
-                                        <th style={s.th}>Name</th>
-                                        <th style={s.th}>Promoted At</th>
-                                        <th style={s.th}>Deadline</th>
-                                        <th style={s.th}>Decays</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {pipeline.pipeline.pendingAcknowledgment.map((a) => (
-                                        <tr key={a.id}>
-                                            <td style={s.td}>{a.applicant_name}</td>
-                                            <td style={s.td}>
-                                                {new Date(a.promoted_at).toLocaleString()}
-                                            </td>
-                                            <td style={s.td}>
-                                                {a.deadline
-                                                    ? new Date(a.deadline).toLocaleString()
-                                                    : 'N/A'}
-                                            </td>
-                                            <td style={s.td}>
-                                                {a.decay_count > 0
-                                                    ? `⚠️ ${a.decay_count}`
-                                                    : a.decay_count}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </>
-                    )}
+                    {/* Action Log */}
+                    <ActionLog jobId={selectedJob} />
 
-                    {/* Waitlisted */}
-                    <h3>🔵 Waitlisted ({pipeline.pipeline.waitlisted.length})</h3>
-                    {pipeline.pipeline.waitlisted.length === 0 ? (
-                        <div style={{
-                            padding: '16px',
-                            textAlign: 'center',
-                            color: '#9ca3af',
-                            border: '2px dashed #e5e7eb',
-                            borderRadius: '8px',
-                            marginBottom: '20px',
-                        }}>
-                            No waitlisted applications
-                        </div>
-                    ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-                            <thead>
-                                <tr style={{ background: '#eff6ff' }}>
-                                    <th style={s.th}>#</th>
-                                    <th style={s.th}>Name</th>
-                                    <th style={s.th}>Email</th>
-                                    <th style={s.th}>Decays</th>
-                                    <th style={s.th}>Applied</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pipeline.pipeline.waitlisted.map((a, idx) => (
-                                    <tr key={a.id}>
-                                        <td style={s.td}>{idx + 1}</td>
-                                        <td style={s.td}>{a.applicant_name}</td>
-                                        <td style={s.td}>{a.applicant_email}</td>
-                                        <td style={s.td}>
-                                            {a.decay_count > 0 ? `⚠️ ${a.decay_count}` : '0'}
-                                        </td>
-                                        <td style={s.td}>
-                                            {new Date(a.applied_at).toLocaleDateString()}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-
-                    {/* Exited */}
-                    {pipeline.pipeline.exited.length > 0 && (
-                        <>
-                            <h3>⚫ Exited ({pipeline.pipeline.exited.length})</h3>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ background: '#f9fafb' }}>
-                                        <th style={s.th}>Name</th>
-                                        <th style={s.th}>Status</th>
-                                        <th style={s.th}>Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {pipeline.pipeline.exited.map((a) => (
-                                        <tr key={a.id}>
-                                            <td style={s.td}>{a.applicant_name}</td>
-                                            <td style={s.td}>
-                                                <span style={{
-                                                    backgroundColor:
-                                                        a.status === 'hired' ? '#8b5cf6' :
-                                                        a.status === 'rejected' ? '#ef4444' :
-                                                        '#6b7280',
-                                                    color: 'white',
-                                                    padding: '2px 8px',
-                                                    borderRadius: '12px',
-                                                    fontSize: '12px',
-                                                }}>
-                                                    {a.status.toUpperCase()}
-                                                </span>
-                                            </td>
-                                            <td style={s.td}>
-                                                {new Date(a.updated_at).toLocaleString()}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </>
-                    )}
                 </div>
             )}
+
+            <ToastContainer toasts={toasts} onRemove={removeToast} />
         </div>
     );
 }

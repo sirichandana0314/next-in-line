@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../theme/ThemeContext';
 import ToastContainer, { useToast } from './Toast';
 import ActionLog from './ActionLog';
 import PipelineBoard from './PipelineBoard';
 import { companyAPI, jobAPI, applicationAPI } from '../services/api';
 
 function CompanyDashboard() {
+    const { theme } = useTheme();
     const { toasts, toast, removeToast } = useToast();
     const [companies, setCompanies] = useState([]);
     const [selectedCompany, setSelectedCompany] = useState(null);
@@ -23,237 +25,190 @@ function CompanyDashboard() {
         decayWindowMinutes: 1440,
     });
 
-    useEffect(() => {
-        loadCompanies();
-    }, []);
+    useEffect(() => { loadCompanies(); }, []);
 
     const loadPipeline = useCallback(async (jobId) => {
         try {
             const res = await jobAPI.getPipeline(jobId);
             setPipeline(res.data.data);
-        } catch (err) {
-            setError('Failed to load pipeline');
-        }
+        } catch (err) { setError('Failed to load pipeline'); }
     }, []);
 
     useEffect(() => {
         if (!selectedJob || !autoRefresh) return;
-        const interval = setInterval(
-            () => loadPipeline(selectedJob), 10000
-        );
+        const interval = setInterval(() => loadPipeline(selectedJob), 10000);
         return () => clearInterval(interval);
     }, [selectedJob, autoRefresh, loadPipeline]);
 
     const loadCompanies = async () => {
-        try {
-            const res = await companyAPI.list();
-            setCompanies(res.data.data);
-        } catch (err) {
-            setError('Failed to load companies');
-        }
+        try { const res = await companyAPI.list(); setCompanies(res.data.data); }
+        catch (err) { setError('Failed to load companies'); }
     };
 
     const loadJobs = async (companyId) => {
-        try {
-            const res = await jobAPI.listByCompany(companyId);
-            setJobs(res.data.data);
-        } catch (err) {
-            setError('Failed to load jobs');
-        }
+        try { const res = await jobAPI.listByCompany(companyId); setJobs(res.data.data); }
+        catch (err) { setError('Failed to load jobs'); }
     };
 
     const handleSelectCompany = (id) => {
-        setSelectedCompany(id);
-        setSelectedJob(null);
-        setPipeline(null);
-        loadJobs(id);
+        setSelectedCompany(id); setSelectedJob(null); setPipeline(null); loadJobs(id);
     };
 
-    const handleSelectJob = (id) => {
-        setSelectedJob(id);
-        loadPipeline(id);
-    };
+    const handleSelectJob = (id) => { setSelectedJob(id); loadPipeline(id); };
 
     const handleCreateCompany = async (e) => {
         e.preventDefault();
         try {
             await companyAPI.create({ name: newCompanyName });
-            setNewCompanyName('');
-            loadCompanies();
-            toast.success('Company created successfully!', 'Done');
-        } catch (err) {
-            setError('Failed to create company');
-            toast.error('Failed to create company', 'Error');
-        }
+            setNewCompanyName(''); loadCompanies();
+            toast.success('Company created!', 'Done');
+        } catch (err) { setError('Failed to create company'); }
     };
 
     const handleCreateJob = async (e) => {
         e.preventDefault();
         try {
             await jobAPI.create({
-                companyId: selectedCompany,
-                ...newJob,
+                companyId: selectedCompany, ...newJob,
                 activeCapacity: parseInt(newJob.activeCapacity),
                 decayWindowMinutes: parseInt(newJob.decayWindowMinutes),
             });
-            setNewJob({
-                title: '',
-                description: '',
-                activeCapacity: 5,
-                decayWindowMinutes: 1440,
-            });
+            setNewJob({ title: '', description: '', activeCapacity: 5, decayWindowMinutes: 1440 });
             loadJobs(selectedCompany);
-            toast.success('Job opening created!', 'Done');
-        } catch (err) {
-            setError('Failed to create job');
-            toast.error('Failed to create job', 'Error');
-        }
+            toast.success('Job created!', 'Done');
+        } catch (err) { setError('Failed to create job'); }
     };
 
-    const handleExit = async (appId, reason, applicantName) => {
+    const handleExit = async (appId, reason, name) => {
         try {
             setLoading(true);
             await applicationAPI.exit(appId, reason);
             loadPipeline(selectedJob);
-
-            if (reason === 'hired') {
-                toast.hired(
-                    `${applicantName} has been hired! 🎉`,
-                    'Candidate Hired'
-                );
-            } else if (reason === 'rejected') {
-                toast.rejected(
-                    `${applicantName} has been rejected.`,
-                    'Application Rejected'
-                );
-            } else if (reason === 'withdrawn') {
-                toast.warning(
-                    `${applicantName} has withdrawn.`,
-                    'Application Withdrawn'
-                );
-            }
+            if (reason === 'hired') toast.hired(`${name} has been hired! 🎉`, 'Hired');
+            else if (reason === 'rejected') toast.rejected(`${name} rejected.`, 'Rejected');
         } catch (err) {
-            setError(err.response?.data?.error || 'Failed to update');
-            toast.error(
-                err.response?.data?.error || 'Failed to update',
-                'Error'
-            );
-        } finally {
-            setLoading(false);
-        }
+            setError(err.response?.data?.error || 'Failed');
+            toast.error(err.response?.data?.error || 'Failed', 'Error');
+        } finally { setLoading(false); }
     };
 
     const handleCopyJobId = (jobId) => {
         navigator.clipboard.writeText(jobId);
         setCopied(true);
-        toast.info('Job ID copied to clipboard!', 'Copied');
+        toast.info('Job ID copied!', 'Copied');
         setTimeout(() => setCopied(false), 2000);
     };
 
     const s = {
         card: {
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            padding: '16px',
+            background: theme.bgCard,
+            border: `1px solid ${theme.border}`,
+            borderRadius: '12px',
+            padding: '18px',
+            boxShadow: theme.shadow,
+            transition: 'all 0.3s ease',
         },
         input: {
             width: '100%',
-            padding: '8px',
-            borderRadius: '4px',
-            border: '1px solid #d1d5db',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            border: `1px solid ${theme.inputBorder}`,
             boxSizing: 'border-box',
-            marginBottom: '8px',
+            marginBottom: '10px',
+            background: theme.inputBg,
+            color: theme.text,
+            fontSize: '14px',
+            transition: 'all 0.2s ease',
         },
-        btnBlue: {
-            padding: '8px 16px',
-            background: '#3b82f6',
-            color: 'white',
+        btnAccent: {
+            padding: '8px 18px',
+            background: theme.accent,
+            color: '#f5f0e8',
             border: 'none',
-            borderRadius: '4px',
+            borderRadius: '8px',
             cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '13px',
+            transition: 'all 0.2s ease',
+        },
+        btnSuccess: {
+            padding: '8px 18px',
+            background: theme.success,
+            color: '#f5f0e8',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '13px',
         },
     };
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-            <h1>🏢 Company Dashboard</h1>
+        <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
 
             {error && (
                 <div style={{
-                    background: '#fee2e2',
-                    color: '#dc2626',
-                    padding: '10px',
-                    borderRadius: '8px',
+                    background: theme.dangerLight,
+                    color: theme.danger,
+                    padding: '12px 16px',
+                    borderRadius: '10px',
                     marginBottom: '16px',
+                    border: `1px solid ${theme.dangerBorder}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                 }}>
-                    {error}
-                    <button
-                        onClick={() => setError(null)}
-                        style={{
-                            marginLeft: '10px',
-                            cursor: 'pointer',
-                            background: 'none',
-                            border: 'none',
-                            color: '#dc2626',
-                            fontWeight: 'bold',
-                        }}
-                    >✕</button>
+                    <span>{error}</span>
+                    <button onClick={() => setError(null)} style={{
+                        background: 'none', border: 'none',
+                        color: theme.danger, cursor: 'pointer',
+                        fontWeight: 'bold', fontSize: '16px',
+                    }}>✕</button>
                 </div>
             )}
 
-            <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', gap: '20px', marginBottom: '24px' }}>
 
                 {/* Companies */}
                 <div style={{ ...s.card, flex: 1 }}>
-                    <h3>Companies</h3>
-                    <form
-                        onSubmit={handleCreateCompany}
-                        style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}
-                    >
-                        <input
-                            type="text"
-                            placeholder="Company name"
+                    <h3 style={{ color: theme.text, marginBottom: '14px', fontSize: '15px' }}>
+                        Companies
+                    </h3>
+                    <form onSubmit={handleCreateCompany}
+                        style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                        <input type="text" placeholder="Company name"
                             value={newCompanyName}
                             onChange={(e) => setNewCompanyName(e.target.value)}
                             style={{ ...s.input, marginBottom: 0, flex: 1 }}
-                            required
-                        />
-                        <button type="submit" style={s.btnBlue}>Add</button>
+                            required />
+                        <button type="submit" style={s.btnAccent}>Add</button>
                     </form>
-
                     {companies.length === 0 ? (
                         <div style={{
-                            padding: '20px',
-                            textAlign: 'center',
-                            color: '#9ca3af',
-                            border: '2px dashed #e5e7eb',
-                            borderRadius: '8px',
+                            padding: '24px', textAlign: 'center',
+                            color: theme.textMuted,
+                            border: `2px dashed ${theme.border}`,
+                            borderRadius: '10px',
                         }}>
-                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏢</div>
-                            <div>No companies yet</div>
-                            <div style={{ fontSize: '12px' }}>
-                                Add your first company above
-                            </div>
+                            <div style={{ fontSize: '28px', marginBottom: '6px' }}>🏢</div>
+                            <div style={{ fontSize: '13px' }}>No companies yet</div>
                         </div>
                     ) : (
                         companies.map((c) => (
-                            <div
-                                key={c.id}
+                            <div key={c.id}
                                 onClick={() => handleSelectCompany(c.id)}
                                 style={{
-                                    padding: '10px',
-                                    cursor: 'pointer',
-                                    borderRadius: '4px',
-                                    marginBottom: '4px',
-                                    backgroundColor:
-                                        selectedCompany === c.id
-                                            ? '#eff6ff' : 'transparent',
-                                    borderLeft:
-                                        selectedCompany === c.id
-                                            ? '3px solid #3b82f6'
-                                            : '3px solid transparent',
-                                }}
-                            >
+                                    padding: '10px 12px', cursor: 'pointer',
+                                    borderRadius: '8px', marginBottom: '4px',
+                                    background: selectedCompany === c.id
+                                        ? theme.accentLight : 'transparent',
+                                    borderLeft: selectedCompany === c.id
+                                        ? `3px solid ${theme.accent}`
+                                        : '3px solid transparent',
+                                    color: theme.text,
+                                    transition: 'all 0.2s ease',
+                                    fontSize: '14px',
+                                }}>
                                 {c.name}
                             </div>
                         ))
@@ -263,122 +218,75 @@ function CompanyDashboard() {
                 {/* Jobs */}
                 {selectedCompany && (
                     <div style={{ ...s.card, flex: 1 }}>
-                        <h3>Job Openings</h3>
-                        <form
-                            onSubmit={handleCreateJob}
-                            style={{ marginBottom: '12px' }}
-                        >
-                            <input
-                                type="text"
-                                placeholder="Job title"
+                        <h3 style={{ color: theme.text, marginBottom: '14px', fontSize: '15px' }}>
+                            Job Openings
+                        </h3>
+                        <form onSubmit={handleCreateJob} style={{ marginBottom: '14px' }}>
+                            <input type="text" placeholder="Job title"
                                 value={newJob.title}
-                                onChange={(e) =>
-                                    setNewJob({ ...newJob, title: e.target.value })
-                                }
-                                style={s.input}
-                                required
-                            />
-                            <input
-                                type="text"
-                                placeholder="Description (optional)"
+                                onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
+                                style={s.input} required />
+                            <input type="text" placeholder="Description (optional)"
                                 value={newJob.description}
-                                onChange={(e) =>
-                                    setNewJob({ ...newJob, description: e.target.value })
-                                }
-                                style={s.input}
-                            />
+                                onChange={(e) => setNewJob({ ...newJob, description: e.target.value })}
+                                style={s.input} />
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{
-                                        fontSize: '12px', color: '#6b7280',
-                                    }}>
+                                    <label style={{ fontSize: '11px', color: theme.textMuted }}>
                                         Active Capacity
                                     </label>
-                                    <input
-                                        type="number"
-                                        min="1"
+                                    <input type="number" min="1"
                                         value={newJob.activeCapacity}
-                                        onChange={(e) =>
-                                            setNewJob({
-                                                ...newJob,
-                                                activeCapacity: e.target.value,
-                                            })
-                                        }
-                                        style={s.input}
-                                        required
-                                    />
+                                        onChange={(e) => setNewJob({
+                                            ...newJob, activeCapacity: e.target.value,
+                                        })}
+                                        style={s.input} required />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{
-                                        fontSize: '12px', color: '#6b7280',
-                                    }}>
+                                    <label style={{ fontSize: '11px', color: theme.textMuted }}>
                                         Decay Window (min)
                                     </label>
-                                    <input
-                                        type="number"
-                                        min="1"
+                                    <input type="number" min="1"
                                         value={newJob.decayWindowMinutes}
-                                        onChange={(e) =>
-                                            setNewJob({
-                                                ...newJob,
-                                                decayWindowMinutes: e.target.value,
-                                            })
-                                        }
-                                        style={s.input}
-                                        required
-                                    />
+                                        onChange={(e) => setNewJob({
+                                            ...newJob, decayWindowMinutes: e.target.value,
+                                        })}
+                                        style={s.input} required />
                                 </div>
                             </div>
-                            <button
-                                type="submit"
-                                style={{ ...s.btnBlue, background: '#22c55e' }}
-                            >
-                                Create Job
-                            </button>
+                            <button type="submit" style={s.btnSuccess}>Create Job</button>
                         </form>
-
                         {jobs.length === 0 ? (
                             <div style={{
-                                padding: '20px',
-                                textAlign: 'center',
-                                color: '#9ca3af',
-                                border: '2px dashed #e5e7eb',
-                                borderRadius: '8px',
+                                padding: '24px', textAlign: 'center',
+                                color: theme.textMuted,
+                                border: `2px dashed ${theme.border}`,
+                                borderRadius: '10px',
                             }}>
-                                <div style={{ fontSize: '32px', marginBottom: '8px' }}>
-                                    💼
-                                </div>
-                                <div>No job openings yet</div>
-                                <div style={{ fontSize: '12px' }}>
-                                    Create your first job above
-                                </div>
+                                <div style={{ fontSize: '28px', marginBottom: '6px' }}>💼</div>
+                                <div style={{ fontSize: '13px' }}>No jobs yet</div>
                             </div>
                         ) : (
                             jobs.map((j) => (
-                                <div
-                                    key={j.id}
+                                <div key={j.id}
                                     onClick={() => handleSelectJob(j.id)}
                                     style={{
-                                        padding: '10px',
-                                        cursor: 'pointer',
-                                        borderRadius: '4px',
-                                        marginBottom: '4px',
-                                        backgroundColor:
-                                            selectedJob === j.id
-                                                ? '#f0fdf4' : 'transparent',
-                                        borderLeft:
-                                            selectedJob === j.id
-                                                ? '3px solid #22c55e'
-                                                : '3px solid transparent',
-                                    }}
-                                >
-                                    <strong>{j.title}</strong>
-                                    <div style={{
-                                        fontSize: '12px', color: '#6b7280',
+                                        padding: '10px 12px', cursor: 'pointer',
+                                        borderRadius: '8px', marginBottom: '4px',
+                                        background: selectedJob === j.id
+                                            ? theme.successLight : 'transparent',
+                                        borderLeft: selectedJob === j.id
+                                            ? `3px solid ${theme.success}`
+                                            : '3px solid transparent',
+                                        transition: 'all 0.2s ease',
                                     }}>
+                                    <strong style={{ color: theme.text, fontSize: '14px' }}>
+                                        {j.title}
+                                    </strong>
+                                    <div style={{ fontSize: '11px', color: theme.textMuted }}>
                                         Capacity: {j.active_capacity} |
                                         Active: {j.active_count} |
-                                        Waitlisted: {j.waitlisted_count} |
+                                        Wait: {j.waitlisted_count} |
                                         Total: {j.total_applications || 0}
                                     </div>
                                 </div>
@@ -391,122 +299,82 @@ function CompanyDashboard() {
             {/* Pipeline */}
             {pipeline && (
                 <div style={s.card}>
-
-                    {/* Pipeline Header */}
                     <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '20px',
+                        display: 'flex', justifyContent: 'space-between',
+                        alignItems: 'center', marginBottom: '20px',
                     }}>
                         <div>
-                            <h2 style={{ margin: 0 }}>
-                                {pipeline.job.title} — Pipeline
+                            <h2 style={{
+                                margin: 0, color: theme.text,
+                                fontSize: '18px', fontWeight: '600',
+                            }}>
+                                {pipeline.job.title}
                             </h2>
                             <div style={{
-                                fontSize: '12px',
-                                color: '#6b7280',
-                                marginTop: '6px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
+                                fontSize: '11px', color: theme.textMuted,
+                                marginTop: '6px', display: 'flex',
+                                alignItems: 'center', gap: '8px',
                             }}>
-                                <span>Job ID: {pipeline.job.id}</span>
-                                <button
-                                    onClick={() => handleCopyJobId(pipeline.job.id)}
+                                <span>ID: {pipeline.job.id.slice(0, 12)}...</span>
+                                <button onClick={() => handleCopyJobId(pipeline.job.id)}
                                     style={{
-                                        padding: '2px 8px',
-                                        fontSize: '11px',
-                                        background: copied ? '#dcfce7' : '#f3f4f6',
-                                        border: '1px solid #d1d5db',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        color: copied ? '#16a34a' : '#374151',
-                                    }}
-                                >
-                                    {copied ? '✅ Copied!' : '📋 Copy ID'}
+                                        padding: '2px 8px', fontSize: '10px',
+                                        background: copied
+                                            ? theme.successLight : theme.bgSecondary,
+                                        border: `1px solid ${theme.border}`,
+                                        borderRadius: '4px', cursor: 'pointer',
+                                        color: copied ? theme.success : theme.textSecondary,
+                                    }}>
+                                    {copied ? '✓ Copied' : 'Copy ID'}
                                 </button>
-                                <span style={{
-                                    fontSize: '11px', color: '#9ca3af',
-                                }}>
-                                    (Share with applicants)
-                                </span>
                             </div>
                         </div>
-                        <div style={{
-                            display: 'flex', gap: '8px', alignItems: 'center',
-                        }}>
-                            <label style={{ fontSize: '14px' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={autoRefresh}
-                                    onChange={(e) => setAutoRefresh(e.target.checked)}
-                                />{' '}
-                                Auto-refresh (10s)
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <label style={{
+                                fontSize: '12px', color: theme.textSecondary,
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                            }}>
+                                <input type="checkbox" checked={autoRefresh}
+                                    onChange={(e) => setAutoRefresh(e.target.checked)} />
+                                Auto
                             </label>
-                            <button
-                                onClick={() => loadPipeline(selectedJob)}
+                            <button onClick={() => loadPipeline(selectedJob)}
                                 style={{
-                                    ...s.btnBlue,
-                                    background: '#6b7280',
-                                    padding: '6px 12px',
-                                }}
-                            >
-                                🔄 Refresh
+                                    ...s.btnAccent, padding: '5px 12px',
+                                    fontSize: '12px', background: theme.bgHover,
+                                    color: theme.textSecondary,
+                                }}>
+                                ↻ Refresh
                             </button>
                         </div>
                     </div>
 
-                    {/* Stats Row */}
+                    {/* Stats */}
                     <div style={{
-                        display: 'flex',
-                        gap: '12px',
-                        marginBottom: '24px',
-                        flexWrap: 'wrap',
+                        display: 'flex', gap: '10px',
+                        marginBottom: '24px', flexWrap: 'wrap',
                     }}>
                         {[
-                            {
-                                label: 'Active',
-                                value: pipeline.stats.activeCount,
-                                color: '#22c55e',
-                            },
-                            {
-                                label: 'Pending Ack',
-                                value: pipeline.stats.pendingCount,
-                                color: '#f59e0b',
-                            },
-                            {
-                                label: 'Waitlisted',
-                                value: pipeline.stats.waitlistedCount,
-                                color: '#3b82f6',
-                            },
-                            {
-                                label: 'Spots Open',
-                                value: pipeline.stats.spotsAvailable,
-                                color: '#8b5cf6',
-                            },
-                            {
-                                label: 'Total Apps',
-                                value: pipeline.stats.totalApplications,
-                                color: '#6b7280',
-                            },
+                            { label: 'Active', value: pipeline.stats.activeCount, color: theme.success },
+                            { label: 'Pending', value: pipeline.stats.pendingCount, color: theme.warning },
+                            { label: 'Waitlisted', value: pipeline.stats.waitlistedCount, color: theme.blue },
+                            { label: 'Open', value: pipeline.stats.spotsAvailable, color: theme.purple },
+                            { label: 'Total', value: pipeline.stats.totalApplications, color: theme.textMuted },
                         ].map((stat) => (
                             <div key={stat.label} style={{
-                                padding: '12px 20px',
-                                background: `${stat.color}15`,
-                                borderRadius: '8px',
+                                padding: '10px 16px',
+                                background: `${stat.color}12`,
+                                borderRadius: '10px',
                                 borderLeft: `3px solid ${stat.color}`,
-                                minWidth: '100px',
+                                flex: 1, minWidth: '80px',
                             }}>
                                 <div style={{
-                                    fontSize: '24px',
-                                    fontWeight: 'bold',
-                                    color: stat.color,
+                                    fontSize: '22px', fontWeight: '700', color: stat.color,
                                 }}>
                                     {stat.value}
                                 </div>
                                 <div style={{
-                                    fontSize: '12px', color: '#6b7280',
+                                    fontSize: '11px', color: theme.textMuted,
                                 }}>
                                     {stat.label}
                                 </div>
@@ -514,7 +382,7 @@ function CompanyDashboard() {
                         ))}
                     </div>
 
-                    {/* Pipeline Board — Visual Cards */}
+                    {/* Pipeline Board */}
                     <PipelineBoard
                         pipeline={pipeline}
                         onHire={(id, name) => handleExit(id, 'hired', name)}
@@ -524,7 +392,6 @@ function CompanyDashboard() {
 
                     {/* Action Log */}
                     <ActionLog jobId={selectedJob} />
-
                 </div>
             )}
 

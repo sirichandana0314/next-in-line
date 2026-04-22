@@ -14,99 +14,94 @@ Companies define how many applicants they actively review at once. Everything be
 - npm
 
 ### 1. Clone the Repository
-\```bash
+```bash
 git clone https://github.com/sirichandana0314/next-in-line.git
 cd next-in-line
-\```
+2. Create the Database
+Bash
 
-### 2. Create the Database
-\```bash
 createdb -U postgres next_in_line
-\```
+3. Configure Environment
+Bash
 
-### 3. Configure Environment
-\```bash
 cp server/.env.example server/.env
-\```
 Edit server/.env and set your PostgreSQL password.
 
-### 4. Set Up Database Schema
-\```bash
-psql -U postgres -d next_in_line -f server/src/db/schema.sql
-\```
+4. Set Up Database Schema
+Bash
 
-### 5. Install Dependencies
-\```bash
+psql -U postgres -d next_in_line -f server/src/db/schema.sql
+5. Install Dependencies
+Bash
+
 cd server && npm install
 cd ../client && npm install
-\```
+6. Load Demo Data (Recommended)
+Bash
 
-### 6. Start the Application
+psql -U postgres -d next_in_line -f server/src/db/seed.sql
+This loads a sample company, job opening, and 10 applicants across all pipeline states so you can see the system working immediately.
 
+7. Start the Application
 Terminal 1 — Backend:
-\```bash
+
+Bash
+
 cd server
 npm run dev
-\```
-
 Terminal 2 — Frontend:
-\```bash
+
+Bash
+
 cd client
 npm start
-\```
+Or run both together from root:
 
-- Backend: http://localhost:3001
-- Frontend: http://localhost:3000
-- Health check: http://localhost:3001/api/health
+Bash
 
----
+npm run dev
+Backend: http://localhost:3001
+Frontend: http://localhost:3000
+Health check: http://localhost:3001/api/health
+🏗️ Architecture
+The system has 4 layers:
 
-## 🏗️ Architecture
+Layer 1 — Frontend (React)
 
-The system has 3 layers:
+Company Dashboard: create jobs, view pipeline board, hire or reject applicants, live action log, toast notifications
+Applicant Portal: browse open positions, apply, check status, view queue position, acknowledge promotion, countdown timer
+Layer 2 — Backend (Express + Node.js)
 
-**Layer 1 — Frontend (React)**
-- Company Dashboard: create jobs, view pipeline, hire or reject applicants
-- Applicant Portal: check status, view queue position, acknowledge promotion
+REST API handles all requests with input validation
+PipelineService contains all core business logic
+DecayScheduler runs every 60 seconds checking for expired promotions
+Layer 3 — Database (PostgreSQL)
 
-**Layer 2 — Backend (Express + Node.js)**
-- REST API handles all requests
-- PipelineService contains all core business logic
-- DecayScheduler runs every 60 seconds checking for expired promotions
-
-**Layer 3 — Database (PostgreSQL)**
-- companies table
-- job_openings table
-- applications table
-- application_status_log table (append-only audit trail)
-
-### Tech Stack
-- **PostgreSQL** — Relational database with ACID transactions
-- **Express** — Node.js web framework
-- **React** — Minimal frontend UI
-- **Node.js** — Runtime
-
----
-
-## 🔑 Key Design Decisions
-
-### 1. Why PostgreSQL over MongoDB?
-
+companies table
+job_openings table
+applications table
+application_status_log table (append-only audit trail)
+Tech Stack
+PostgreSQL — Relational database with ACID transactions
+Express — Node.js web framework
+React — Minimal frontend UI
+Node.js — Runtime
+🔑 Key Design Decisions
+1. Why PostgreSQL over MongoDB?
 This system has strict transactional requirements:
 
-- When an applicant exits, we must atomically update their status AND promote the next person. If either fails, both must roll back.
-- SELECT FOR UPDATE row-level locking prevents race conditions during concurrent applications.
-- Relational integrity ensures no orphaned applications ever exist.
-
+When an applicant exits, we must atomically update their status AND promote the next person. If either fails, both must roll back.
+SELECT FOR UPDATE row-level locking prevents race conditions during concurrent applications.
+Relational integrity ensures no orphaned applications ever exist.
 MongoDB would require application-level transaction management, adding complexity without benefit.
 
-### 2. Concurrency — Two Applications, One Spot
+2. Concurrency — Two Applications, One Spot
+The Problem: Two HTTP requests arrive at the same millisecond for the last available spot.
 
-**The Problem:** Two HTTP requests arrive at the same millisecond for the last available spot.
+The Solution: PostgreSQL row-level locking with SELECT FOR UPDATE
 
-**The Solution:** PostgreSQL row-level locking with SELECT FOR UPDATE
+SQL
 
-\```sql
 BEGIN;
 -- Lock the job row. Any concurrent transaction BLOCKS here.
 SELECT active_capacity FROM job_openings WHERE id = $1 FOR UPDATE;
@@ -115,119 +110,135 @@ SELECT COUNT(*) FROM applications WHERE job_id = $1 AND status = 'active';
 -- Make placement decision based on accurate count
 -- Insert application
 COMMIT;
-\```
+How it plays out:
 
-**How it plays out:**
-1. Transaction A locks the job row
-2. Transaction B tries to lock — BLOCKED
-3. Transaction A counts 9 active, inserts as active now 10, commits
-4. Transaction B unblocks, counts 10 active, inserts as waitlisted
-5. Capacity is never exceeded — guaranteed
+Transaction A locks the job row
+Transaction B tries to lock — BLOCKED
+Transaction A counts 9 active, inserts as active now 10, commits
+Transaction B unblocks, counts 10 active, inserts as waitlisted
+Capacity is never exceeded — guaranteed
+Why not advisory locks?
+Advisory locks work globally. Row-level locks are granular — different jobs process concurrently. Only same-job applications serialize. Better throughput.
 
-### Concurrency Test — Proven, Not Just Claimed
-
+Concurrency Test — Proven, Not Just Claimed
 Run this to prove it works:
 
-\```bash
+Bash
+
 cd server
 node src/tests/concurrencyTest.js
-\```
-
 Expected output:
-\```
+
+text
+
 ✅ PASSED — Exactly 1 applicant got the active spot
 ✅ PASSED — Capacity was NEVER exceeded
 ✅ PASSED — SELECT FOR UPDATE locking works correctly
 ✅ PASSED — Race condition is fully prevented
-\```
-
 5 applications fired simultaneously at a job with capacity 1.
 Only 1 gets the spot. Every time. Guaranteed.
 
-### 3. Inactivity Decay System
-
+3. Inactivity Decay System
 When a waitlisted applicant is promoted, a countdown begins.
 
 The decay scheduler runs every 60 seconds using setInterval with no external libraries.
 
-**If applicant does not acknowledge in time:**
+If applicant does not acknowledge in time:
 
-| Condition | Action |
-|-----------|--------|
-| decay_count less than max_decays | Push back to waitlist with penalty |
-| decay_count equals max_decays | Auto-reject permanently |
+Condition	Action
+decay_count less than max_decays	Push back to waitlist with penalty
+decay_count equals max_decays	Auto-reject permanently
+Penalty Formula:
 
-**Penalty Formula:**
-penalty = ceil(waitlist_size / decay_penalty_divisor) × decay_count
+text
+
+penalty = ceil(waitlist_size / decay_penalty_divisor) x decay_count
 new_position = current_max_position + penalty
+Why this formula?
 
-**Why this formula?**
-- Proportional to how busy the queue is
-- Harsher on repeat offenders multiplied by decay_count
-- Minimum penalty of 1 position always applied
+Proportional to how busy the queue is
+Harsher on repeat offenders multiplied by decay_count
+Minimum penalty of 1 position always applied
+Defaults:
 
-**Defaults:**
-- Decay window: 1440 minutes which is 24 hours and configurable per job
-- Penalty divisor: 3 which pushes back by one third of waitlist
-- Max decays: 3 which means three strikes then auto-rejected
+Parameter	Default	Purpose
+decay_window_minutes	1440 (24h)	Time window to acknowledge
+decay_penalty_divisor	3	Controls penalty severity
+max_decays	3	Strikes before auto-reject
+Cascade Behavior:
+If Person A decays and Person B promotes but also does not respond, the scheduler catches Person B on the next run. This continues until someone acknowledges or the waitlist is empty. Each cascade is a separate scheduler run to prevent long-running database transactions.
 
-### 4. Audit Trail
-
+4. Audit Trail
 Every status transition creates a row in application_status_log. This table is append-only. Nothing is ever updated or deleted.
 
+Each entry records:
+
+application_id — Which application changed
+previous_status — What it was before
+new_status — What it became
+reason — Human-readable explanation
+metadata — JSON with context like decay count and penalty amount
+created_at — Exact timestamp
 This means:
-- Full history of any application can be reconstructed
-- Every promotion, decay, rejection is traceable
-- Debugging is trivial
 
-### 5. No External Queue Libraries
-
+Full history of any application can be reconstructed
+Every promotion, decay, rejection is traceable
+Pipeline state at any point in time can be derived from the log
+Debugging is trivial — read the log chronologically
+5. No External Queue Libraries
 Core logic is custom-built as required. The decay scheduler uses Node.js setInterval with a mutex flag called isRunning to prevent overlapping executions.
 
----
+JavaScript
 
-## 📡 API Documentation
+this.intervalId = setInterval(() => {
+    if (this.isRunning) return; // Mutex prevents overlap
+    this.isRunning = true;
+    this.checkAndProcessDecays().finally(() => {
+        this.isRunning = false;
+    });
+}, 60000);
+6. Why Polling Over WebSockets
+The frontend refreshes every 10 seconds via polling. This is deliberate:
 
-### Base URL: http://localhost:3001/api
+Simplicity — No WebSocket server or reconnection logic needed
+Sufficiency — Hiring decisions happen over hours not milliseconds
+Reliability — HTTP polling is stateless. Dropped connections just resume
+The spec says does not need to be real-time — optimize for simplicity
+📡 API Documentation
+Base URL: http://localhost:3001/api
+Health Check
+text
 
-### Health Check
-\```
 GET /api/health
 Response: { "status": "healthy", "database": "connected" }
-\```
+Companies
+Method	Endpoint	Description
+POST	/companies	Create company
+GET	/companies	List all companies
+GET	/companies/:id	Get company with jobs
+Create Company
 
-### Companies
+text
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /companies | Create company |
-| GET | /companies | List all companies |
-| GET | /companies/:id | Get company with jobs |
-
-**Create Company**
-\```
 POST /companies
 Body: { "name": "TechStartup Inc." }
 Response 201: { "data": { "id": "uuid", "name": "TechStartup Inc." } }
-\```
+List Companies
 
-**List Companies**
-\```
+text
+
 GET /companies
 Response 200: { "data": [ { "id": "uuid", "name": "..." } ] }
-\```
+Jobs
+Method	Endpoint	Description
+POST	/jobs	Create job opening
+GET	/jobs/company/:companyId	List jobs for company
+GET	/jobs/:id/pipeline	Get full pipeline state
+PATCH	/jobs/:id/status	Update job status
+Create Job
 
-### Jobs
+text
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /jobs | Create job opening |
-| GET | /jobs/company/:companyId | List jobs for company |
-| GET | /jobs/:id/pipeline | Get full pipeline state |
-| PATCH | /jobs/:id/status | Update job status |
-
-**Create Job**
-\```
 POST /jobs
 Body: {
   "companyId": "uuid",
@@ -239,10 +250,10 @@ Body: {
   "maxDecays": 3
 }
 Response 201: { "data": { "id": "uuid", "title": "..." } }
-\```
+Get Pipeline State
 
-**Get Pipeline State**
-\```
+text
+
 GET /jobs/:id/pipeline
 Response 200: {
   "data": {
@@ -262,21 +273,18 @@ Response 200: {
     }
   }
 }
-\```
+Applications
+Method	Endpoint	Description
+POST	/applications	Submit application
+GET	/applications/lookup?email=	Find by email
+GET	/applications/:id	Get application status
+GET	/applications/:id/history	Get full audit trail
+POST	/applications/:id/exit	Hire or reject or withdraw
+POST	/applications/:id/acknowledge	Acknowledge promotion
+Submit Application
 
-### Applications
+text
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /applications | Submit application |
-| GET | /applications/lookup?email= | Find by email |
-| GET | /applications/:id | Get application status |
-| GET | /applications/:id/history | Get full audit trail |
-| POST | /applications/:id/exit | Hire or reject or withdraw |
-| POST | /applications/:id/acknowledge | Acknowledge promotion |
-
-**Submit Application**
-\```
 POST /applications
 Body: {
   "jobId": "uuid",
@@ -294,10 +302,10 @@ Errors:
   400 You have already applied to this job
   400 Job opening is not accepting applications
   404 Job opening not found
-\```
+Get Application Status
 
-**Get Application Status**
-\```
+text
+
 GET /applications/:id
 Response 200: {
   "data": {
@@ -312,10 +320,10 @@ Response 200: {
     "appliedAt": "ISO timestamp"
   }
 }
-\```
+Get Application History
 
-**Get Application History**
-\```
+text
+
 GET /applications/:id/history
 Response 200: {
   "data": [
@@ -334,146 +342,135 @@ Response 200: {
     }
   ]
 }
-\```
+Exit Pipeline
 
-**Exit Pipeline**
-\```
+text
+
 POST /applications/:id/exit
 Body: { "reason": "hired or rejected or withdrawn" }
 Response 200: { "data": { "message": "Application rejected successfully" } }
 Note: Automatically triggers promotion of next waitlisted applicant
-\```
+Acknowledge Promotion
 
-**Acknowledge Promotion**
-\```
+text
+
 POST /applications/:id/acknowledge
 Response 200: { "data": { "message": "Promotion acknowledged successfully" } }
 Error 400: Cannot acknowledge from status active. Must be pending_acknowledgment.
-\```
-
----
-
-## 🔄 Application State Machine
-
+🔄 Application State Machine
 Every application moves through these statuses:
 
-**On Apply:**
-- If active spots available → status becomes ACTIVE
-- If no spots available → status becomes WAITLISTED
+On Apply:
 
-**When active spot opens:**
-- Next WAITLISTED person → status becomes PENDING_ACKNOWLEDGMENT
-- Acknowledgment timer starts immediately
+If active spots available → status becomes ACTIVE
+If no spots available → status becomes WAITLISTED
+When active spot opens:
 
-**If applicant acknowledges in time:**
-- PENDING_ACKNOWLEDGMENT → ACTIVE
+Next WAITLISTED person → status becomes PENDING_ACKNOWLEDGMENT
+Acknowledgment timer starts immediately
+If applicant acknowledges in time:
 
-**If applicant does NOT acknowledge in time:**
-- decay_count is less than max_decays → back to WAITLISTED with penalty position
-- decay_count equals max_decays → permanently REJECTED
-- Next waitlisted person promotes automatically (cascade)
+PENDING_ACKNOWLEDGMENT → ACTIVE
+If applicant does NOT acknowledge in time:
 
-**Company actions on active applicants:**
-- ACTIVE → HIRED
-- ACTIVE → REJECTED
-- ACTIVE → WITHDRAWN
+decay_count is less than max_decays → back to WAITLISTED with penalty position
+decay_count equals max_decays → permanently REJECTED
+Next waitlisted person promotes automatically (cascade)
+Company actions on active applicants:
 
-**Valid status values:**
-- applied
-- active
-- waitlisted
-- pending_acknowledgment
-- hired
-- rejected
-- withdrawn
+ACTIVE → HIRED
+ACTIVE → REJECTED
+ACTIVE → WITHDRAWN
+Valid status values:
 
----
+applied
+active
+waitlisted
+pending_acknowledgment
+hired
+rejected
+withdrawn
+🖥️ Frontend Features
+Company Dashboard:
 
-## 🖥️ Frontend Design Decisions
+Create companies and job openings with configurable capacity and decay settings
+Visual pipeline board with colored cards per status
+Capacity progress bar showing real-time usage
+Hire and reject applicants with one click
+Toast notifications for every action
+Live action log showing recent pipeline events with timestamps
+Copy Job ID button for sharing with applicants
+Auto-refresh every 10 seconds with manual override
+Applicant Portal:
 
-### Polling over WebSockets
+Browse all open positions — no Job ID needed
+Apply with one click from the job listing
+Look up all applications by email address
+View exact queue position and total waitlist size
+Live countdown timer showing time remaining to acknowledge
+Acknowledge promotion or withdraw at any time
+Full application timeline showing every state change with reasons
+⚖️ Tradeoffs
+Decision	Benefit	Cost
+PostgreSQL FOR UPDATE locking	Bulletproof concurrency	Serializes same-job applications
+setInterval scheduler	No external dependencies	Single-server only
+Polling over WebSockets	Simple and reliable	0 to 10 second stale data window
+Inline React styles	No CSS framework needed	Harder to maintain at scale
+Append-only audit log	Full history always available	Storage grows over time
+No authentication	Faster development	Not production-ready as-is
+Custom queue logic	No library dependency	More code to maintain
+🔮 What I Would Change With More Time
+Email Notifications — When promoted, applicants get an email with acknowledgment link
+Authentication and Privacy — Currently the system operates as a trusted internal tool with no authentication layer, which is appropriate for the stated use case of small engineering teams. In production:
+Company dashboard would be behind JWT authentication
+Each company would only see their own pipeline
+Applicant portal would use email verification tokens
+Action log would be company-private only
+The applicant view already has privacy by design — applicants can only look up their own applications by email and cannot see other applicants or pipeline details
+WebSocket Layer — Real-time pipeline updates for company dashboard
+Database Migrations — Use node-pg-migrate instead of raw SQL files
+Comprehensive Tests — Unit tests for PipelineService, integration tests for API
+Rate Limiting — Prevent spam applications
+Waitlist Position Compaction — Renumber positions after decays to remove gaps
+Multi-server Scheduling — PostgreSQL advisory locks for running multiple server instances
+Pipeline Stages — Phone screen then Technical then Onsite then Offer stages
+Analytics Dashboard — Time-to-hire metrics, conversion rates, bottleneck detection
+📁 Project Structure
+server/
 
-The frontend refreshes every 10 seconds via polling. This is deliberate:
+src/controllers/applicationController.js
+src/controllers/companyController.js
+src/controllers/jobController.js
+src/db/pool.js
+src/db/schema.sql
+src/db/seed.sql
+src/routes/applicationRoutes.js
+src/routes/companyRoutes.js
+src/routes/jobRoutes.js
+src/services/decayScheduler.js
+src/services/pipelineService.js
+src/tests/concurrencyTest.js
+src/index.js
+.env.example
+package.json
+client/
 
-1. **Simplicity** — No WebSocket server or reconnection logic needed
-2. **Sufficiency** — Hiring decisions happen over hours not milliseconds
-3. **Reliability** — HTTP polling is stateless. Dropped connections just resume
-4. **The spec says does not need to be real-time** — optimize for simplicity
+src/components/ApplicantView.js
+src/components/CompanyDashboard.js
+src/components/PipelineBoard.js
+src/components/ActionLog.js
+src/components/CountdownTimer.js
+src/components/Toast.js
+src/services/api.js
+src/theme/ThemeContext.js
+src/App.js
+src/index.js
+package.json
+root
 
-The company dashboard has:
-- Auto-refresh toggle with 10 second interval
-- Manual refresh button for immediate updates
-
----
-
-## ⚖️ Tradeoffs
-
-| Decision | Benefit | Cost |
-|----------|---------|------|
-| PostgreSQL FOR UPDATE locking | Bulletproof concurrency | Serializes same-job applications |
-| setInterval scheduler | No external dependencies | Single-server only |
-| Polling over WebSockets | Simple and reliable | 0 to 10 second stale data window |
-| Inline React styles | No CSS framework needed | Harder to maintain at scale |
-| Append-only audit log | Full history always available | Storage grows over time |
-
----
-
-## 🔮 What I Would Change With More Time
-
-1. **Email Notifications** — When promoted, applicants get an email with acknowledgment link
-2. **Authentication & Privacy** — Currently the system operates as a 
-trusted internal tool with no authentication layer, which is appropriate 
-for the stated use case of small engineering teams. In production:
-   - Company dashboard would be behind JWT authentication
-   - Each company would only see their own pipeline
-   - Applicant portal would use email verification tokens
-   - Action log would be company-private only
-   - The applicant view already has privacy by design — 
-     applicants can only look up their own applications by email
-     and cannot see other applicants or pipeline details
-3. **WebSocket Layer** — Real-time pipeline updates for company dashboard
-4. **Database Migrations** — Use node-pg-migrate instead of raw SQL files
-5. **Comprehensive Tests** — Unit tests for PipelineService, integration tests for API
-6. **Rate Limiting** — Prevent spam applications
-7. **Waitlist Position Compaction** — Renumber positions after decays to remove gaps
-8. **Multi-server Scheduling** — PostgreSQL advisory locks for running multiple server instances
-9. **Public Job Board** — Applicants can browse openings without needing a Job ID
-10. **Pipeline Stages** — Phone screen then Technical then Onsite then Offer stages
-
----
-
-## 📁 Project Structure
-
-**server/**
-- src/controllers/applicationController.js
-- src/controllers/companyController.js
-- src/controllers/jobController.js
-- src/db/pool.js
-- src/db/schema.sql
-- src/routes/applicationRoutes.js
-- src/routes/companyRoutes.js
-- src/routes/jobRoutes.js
-- src/services/decayScheduler.js
-- src/services/pipelineService.js
-- src/index.js
-- .env.example
-- package.json
-
-**client/**
-- src/components/ApplicantView.js
-- src/components/CompanyDashboard.js
-- src/services/api.js
-- src/App.js
-- src/index.js
-- package.json
-
-**root**
-- README.md
-- LICENSE
-- .gitignore
-
----
-
-## 📄 License
-
+README.md
+LICENSE
+.gitignore
+package.json
+📄 License
 MIT

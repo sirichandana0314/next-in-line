@@ -563,6 +563,23 @@ class PipelineService {
              reason, JSON.stringify(metadata)]
         );
     }
+    async lookupByEmail(email) {
+    const result = await pool.query(
+        `SELECT a.id, a.applicant_name, a.applicant_email, 
+                a.status, a.waitlist_position, a.applied_at,
+                j.title as job_title, c.name as company_name
+         FROM applications a
+         JOIN job_openings j ON a.job_id = j.id
+         JOIN companies c ON j.company_id = c.id
+         WHERE a.applicant_email = $1
+         ORDER BY a.applied_at DESC`,
+        [email]
+    );
+    return result.rows;
 }
+}
+
+
+
 
 module.exports = new PipelineService();

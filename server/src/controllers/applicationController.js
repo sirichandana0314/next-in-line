@@ -59,10 +59,19 @@ const applicationController = {
             const history = await pipelineService.getApplicationHistory(id);
             res.json({ data: history });
         } catch (error) {
-            console.error('Error getting history:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            console.error('Error getting application history:', {
+            applicationId: req.params.id,
+            error: error.message,
+            stack: error.stack,
+        });
+        res.status(500).json({
+            error: 'Failed to retrieve application history',
+            details: process.env.NODE_ENV === 'development' 
+                ? error.message : undefined,
+        });
         }
-    },
+    }, 
+        
 
     async exit(req, res) {
         try {
@@ -116,22 +125,22 @@ const applicationController = {
                 });
             }
 
-            const result = await pool.query(
-                `SELECT a.id, a.applicant_name, a.applicant_email, 
-                        a.status, a.waitlist_position, a.applied_at,
-                        j.title as job_title, c.name as company_name
-                 FROM applications a
-                 JOIN job_openings j ON a.job_id = j.id
-                 JOIN companies c ON j.company_id = c.id
-                 WHERE a.applicant_email = $1
-                 ORDER BY a.applied_at DESC`,
-                [email.trim().toLowerCase()]
-            );
+        const applications = await pipelineService.lookupByEmail(
+            email.trim().toLowerCase()
+        );
 
-            res.json({ data: result.rows });
+            res.json({ data: applications });
         } catch (error) {
-            console.error('Error looking up:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            console.error('Error looking up applications by email::', {
+                email: req.query.email,
+            error: error.message,
+            stack: error.stack,
+        });
+        res.status(500).json({
+            error: 'Failed to look up applications',
+            details: process.env.NODE_ENV === 'development' 
+                ? error.message : undefined,
+        });
         }
     },
 };

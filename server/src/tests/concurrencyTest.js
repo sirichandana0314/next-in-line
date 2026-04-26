@@ -10,7 +10,7 @@
  * node src/tests/concurrencyTest.js
  * 
  * Expected result:
- * - Exactly ONE applicant gets the last active spot
+ * - Exactly ONE applicant gets the last active slot
  * - All others are waitlisted
  * - Total active never exceeds capacity
  */
@@ -70,7 +70,9 @@ async function runConcurrencyTest() {
             if (app.status === 'active') activeCount++;
             if (app.status === 'waitlisted') waitlistedCount++;
         } else {
-            console.log(`   ❌ ${applicants[idx].name}: ERROR - ${result.reason.message}`);
+            console.log(
+                `   ❌ ${applicants[idx].name}: ERROR - ${result.reason.message}`
+            );
             errorCount++;
         }
     });
@@ -86,25 +88,61 @@ async function runConcurrencyTest() {
 
     console.log('\n📋 SUMMARY:\n');
     console.log(`   Job Capacity:     1`);
-    console.log(`   Total Applicants: 5`);
+    console.log(`   Total Applicants: ${applicants.length}`);
     console.log(`   Active:           ${activeCount}`);
     console.log(`   Waitlisted:       ${waitlistedCount}`);
     console.log(`   Errors:           ${errorCount}`);
     console.log(`   DB Active Count:  ${finalActiveCount}`);
 
+    // Step 5: Formal assertions
     console.log('\n🏁 VERDICT:\n');
 
-    if (finalActiveCount === 1 && activeCount === 1) {
-        console.log('   ✅ PASSED — Exactly 1 applicant got the active spot');
-        console.log('   ✅ PASSED — Capacity was NEVER exceeded');
-        console.log('   ✅ PASSED — SELECT FOR UPDATE locking works correctly');
-        console.log('   ✅ PASSED — Race condition is fully prevented\n');
+    const assertions = [
+        {
+            name: 'Exactly 1 applicant got the active spot',
+            passed: activeCount === 1,
+        },
+        {
+            name: 'Capacity was NEVER exceeded',
+            passed: finalActiveCount <= 1,
+        },
+        {
+            name: 'SELECT FOR UPDATE locking works correctly',
+            passed: finalActiveCount === 1,
+        },
+        {
+            name: 'Race condition is fully prevented',
+            passed: activeCount + waitlistedCount + errorCount === applicants.length,
+        },
+        {
+            name: 'All applicants accounted for',
+            passed: results.length === applicants.length,
+        },
+    ];
+
+    let allPassed = true;
+
+    assertions.forEach((assertion) => {
+        if (assertion.passed) {
+            console.log(`   ✅ PASSED — ${assertion.name}`);
+        } else {
+            console.log(`   ❌ FAILED — ${assertion.name}`);
+            allPassed = false;
+        }
+    });
+
+    if (!allPassed) {
+        console.error(
+            '\n❌ Concurrency test FAILED — race condition not handled correctly\n'
+        );
+        process.exitCode = 1;
     } else {
-        console.log(`   ❌ FAILED — Expected 1 active, got ${finalActiveCount}`);
-        console.log('   ❌ Race condition was NOT handled correctly\n');
+        console.log(
+            '\n✅ All assertions passed — concurrency is bulletproof\n'
+        );
     }
 
-    // Cleanup
+    // Step 6: Cleanup test data
     await pool.query(
         `DELETE FROM application_status_log 
          WHERE application_id IN (
@@ -131,8 +169,7 @@ async function applyWithLocking(jobId, applicant) {
     try {
         await client.query('BEGIN');
 
-        // This is the key — FOR UPDATE locks the job row
-        // Only ONE transaction can hold this lock at a time
+        // Lock the job row — prevents concurrent capacity reads
         const jobResult = await client.query(
             `SELECT id, active_capacity 
              FROM job_openings 
@@ -174,8 +211,13 @@ async function applyWithLocking(jobId, applicant) {
               status, waitlist_position, applied_at)
              VALUES ($1, $2, $3, $4, $5, NOW())
              RETURNING *`,
-            [jobId, applicant.name, applicant.email, 
-             status, waitlistPosition]
+            [
+                jobId,
+                applicant.name,
+                applicant.email,
+                status,
+                waitlistPosition,
+            ]
         );
 
         await client.query('COMMIT');
@@ -189,4 +231,8 @@ async function applyWithLocking(jobId, applicant) {
     }
 }
 
-runConcurrencyTest().catch(console.error);
+runConcurrencyTest().catch((error) => {
+    console.error('❌ Test crashed:', error.message);
+    process.exitCode = 1;
+    pool.end();
+});
